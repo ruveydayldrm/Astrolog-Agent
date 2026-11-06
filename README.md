@@ -22,7 +22,8 @@ Lyra, doğum bilgilerinden **gerçek astronomik hesaplamayla** doğum haritası 
   5 ana açı (kavuşum, karşıt, üçgen, kare, altmışlık). Doğum saati bilinmiyorsa evler ve yükselen hesaplanmaz,
   arayüzde ve Lyra'nın bağlamında bu açıkça belirtilir.
 - **İnteraktif harita:** SVG çember. Bir gezegenin üzerine gelince ya da dokununca açıklaması ve açıları vurgulanır.
-- **Lyra sohbeti:** Claude API ile streaming cevaplar. Her istekte doğum haritası, o günün gökyüzü, natal
+- **Tamamen ücretsiz çalışır:** Gemini ücretsiz katmanı + Supabase ücretsiz planı + Vercel Hobby.
+- **Lyra sohbeti:** Streaming cevaplar (varsayılan Google Gemini, istenirse tek ayarla Anthropic Claude). Her istekte doğum haritası, o günün gökyüzü, natal
   haritaya yapılan transit açılar ve kullanıcı hafızası yapılandırılmış biçimde sistem promptuna eklenir.
 - **Hafıza:** Ayrı bir LLM çağrısı, sohbetten kalıcı bilgileri, takip edilecek konuları ve Lyra'nın önemli
   yorumlarını çıkarıp önceki hafızayla birleştirir. Kullanıcı hafızasını ayarlardan görebilir, tek tek silebilir ya da sıfırlayabilir.
@@ -48,6 +49,7 @@ flowchart LR
         Geo["/api/geocode"]
         Astro["lib/astro<br/>saf hesaplama modülü"]
         Lyra["lib/lyra<br/>prompt, bağlam, hafıza"]
+        LLM["lib/llm<br/>sağlayıcı katmanı"]
         RL["lib/rate-limit"]
     end
 
@@ -56,7 +58,7 @@ flowchart LR
         DB[("PostgreSQL + RLS<br/>profiles · conversations · messages<br/>memories · daily_notes · rate_limits")]
     end
 
-    Claude["Anthropic Claude API"]
+    Claude["Google Gemini (ücretsiz)<br/>veya Anthropic Claude"]
     OM["Open-Meteo Geocoding"]
     AE["astronomy-engine<br/>(MIT)"]
 
@@ -66,7 +68,7 @@ flowchart LR
     Proxy --> Auth
     Chat & Daily & Memory --> RL --> DB
     Chat & Daily --> Lyra --> Astro --> AE
-    Lyra -->|yalnızca sunucu| Claude
+    Lyra --> LLM -->|yalnızca sunucu| Claude
     Actions --> Astro
     Actions & Chat & Memory & Daily --> DB
     Geo --> OM
@@ -80,7 +82,7 @@ sequenceDiagram
     participant API as /api/chat
     participant DB as Supabase (RLS)
     participant A as lib/astro
-    participant C as Claude
+    participant C as LLM (Gemini)
 
     U->>API: POST { conversationId?, message }
     API->>DB: oturum, profil, hız sınırı (consume_rate_limit)
@@ -103,7 +105,17 @@ sequenceDiagram
 | Kimlik ve veri | Supabase Auth (e-posta + Google), PostgreSQL, Row Level Security |
 | Astronomi | [astronomy-engine](https://github.com/cosinekitty/astronomy) (MIT) + kendi Placidus ve açı hesaplamaları |
 | Saat dilimi | Luxon (IANA, tarihsel yaz saati kuralları dahil) |
-| LLM | Anthropic Claude (`@anthropic-ai/sdk`), streaming ve server-side refusal fallback |
+| LLM | `lib/llm` sağlayıcı katmanı: **Google Gemini** (`@google/genai`, ücretsiz katman, varsayılan) veya **Anthropic Claude** (`@anthropic-ai/sdk`) |
+| Yayın | Vercel Hobby (ücretsiz) |
+
+### Maliyet: 0 ₺
+
+| Servis | Plan | Not |
+| --- | --- | --- |
+| Google Gemini API | Ücretsiz katman | Kredi kartı istemez. Günlük kota proje geneli paylaşılır; uygulama kullanıcı başı hız sınırı koyar. Ücretsiz katmanda Google gönderilen verileri ürün geliştirmek için kullanabilir. |
+| Supabase | Free | 500 MB veritabanı. 1 hafta hareketsiz kalan proje duraklatılır (panelden tek tıkla açılır). |
+| Vercel | Hobby | Kişisel ve ticari olmayan kullanım. |
+| Open-Meteo Geocoding | Ücretsiz | Ticari olmayan kullanım. |
 | Test | Vitest |
 
 ### Neden Swiss Ephemeris değil?
@@ -132,6 +144,7 @@ src/
 ├── components/                  # ui, icons (elle çizilmiş SVG), cosmos, chart, chat
 ├── lib/
 │   ├── astro/                   # Saf hesaplama modülü + testler
+│   ├── llm/                     # Sağlayıcıdan bağımsız LLM arayüzü (Gemini, Claude)
 │   ├── lyra/                    # Sistem promptu, bağlam, hafıza, günlük not
 │   ├── supabase/                # Sunucu ve tarayıcı istemcileri
 │   ├── db.ts · errors.ts · rate-limit.ts · session.ts
@@ -141,10 +154,10 @@ supabase/migrations/             # Şema + RLS politikaları
 
 ## Kurulum
 
-### 1. Gereksinimler
+### 1. Gereksinimler (hepsi ücretsiz)
 - Node.js 20.9 veya üzeri
-- Bir [Supabase](https://supabase.com) projesi (ücretsiz plan yeterli)
-- Bir [Anthropic API anahtarı](https://console.anthropic.com)
+- Bir [Supabase](https://supabase.com) projesi
+- Bir [Gemini API anahtarı](https://aistudio.google.com/apikey)
 
 ### 2. Bağımlılıklar
 ```bash
@@ -155,13 +168,12 @@ npm install
 ```bash
 cp .env.example .env.local
 ```
-`.env.local` dosyasına Supabase URL'i ve anon key'i (**Project Settings → API**) ile `ANTHROPIC_API_KEY` değerini gir.
-Varsayılan model `claude-opus-5-5`. İstersen `LYRA_CHAT_MODEL` ve `LYRA_UTILITY_MODEL` ile değiştirebilirsin.
+`.env.local` dosyasına Supabase URL'i ve anon key'i (**Project Settings → API**) ile `GEMINI_API_KEY` değerini gir.
+Claude kullanmak istersen `LLM_PROVIDER=anthropic` ve `ANTHROPIC_API_KEY` tanımla.
 
 ### 4. Veritabanı
-`supabase/migrations/` altındaki SQL dosyalarını sırayla uygula:
-- **Supabase CLI ile:** `supabase link --project-ref <ref>` ve ardından `supabase db push`
-- **Elle:** Dashboard → SQL Editor'de dosyaları numara sırasıyla çalıştır.
+- **En kolayı:** Dashboard → SQL Editor → New query → [`supabase/setup.sql`](supabase/setup.sql) dosyasının tamamını yapıştır → **Run**.
+- **CLI ile:** `supabase link --project-ref <ref>` ve ardından `supabase db push` (`supabase/migrations/` kullanılır).
 
 ### 5. Kimlik doğrulama
 - **Authentication → URL Configuration:** Site URL `http://localhost:3000`, Redirect URL `http://localhost:3000/auth/callback`
@@ -175,6 +187,11 @@ npm run dev          # http://localhost:3000
 npm test             # birim testleri
 npm run typecheck && npm run lint && npm run build
 ```
+
+### 7. Vercel'e yayınla (ücretsiz)
+1. [vercel.com/new](https://vercel.com/new) → GitHub reposunu içe aktar (framework otomatik algılanır).
+2. **Environment Variables** bölümüne `.env.local` içindeki değerleri gir; `NEXT_PUBLIC_SITE_URL` olarak Vercel adresini yaz.
+3. Deploy. Ardından Supabase → Authentication → URL Configuration'a Vercel adresini ve `https://<adres>/auth/callback` yönlendirmesini ekle.
 
 ## Hesaplama modülü ve testler
 
@@ -202,9 +219,9 @@ Testler (`npm test`, 31 test):
 - **RLS:** Her tabloda kullanıcı yalnızca `auth.uid()` ile eşleşen satırlara erişebilir. `messages` eklenirken
   sohbetin de aynı kullanıcıya ait olduğu doğrulanır. `rate_limits` tablosuna doğrudan erişim yok; sayaç yalnızca
   `security definer` bir fonksiyonla artırılabiliyor.
-- **API anahtarı:** Claude çağrıları yalnızca sunucuda yapılır. `lib/lyra/anthropic.ts` dosyasındaki `server-only`
-  importu, anahtarın istemci paketine sızmasını derleme aşamasında engeller.
-- **Hız sınırı:** Sohbet için saatte 30, günde 150 mesaj. Hafıza, günlük not ve şehir arama için ayrı kovalar var.
+- **API anahtarı:** LLM çağrıları yalnızca sunucuda yapılır. `lib/llm` modüllerindeki `server-only` importu,
+  anahtarın istemci paketine sızmasını derleme aşamasında engeller.
+- **Hız sınırı:** Sohbet için saatte 20, günde 60 mesaj. Hafıza, günlük not ve şehir arama için ayrı kovalar var.
 - **Hafıza şeffaflığı:** Kullanıcı Lyra'nın neyi hatırladığını görür ve dilediğini siler.
 
 ## Lisans

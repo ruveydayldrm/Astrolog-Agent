@@ -1,16 +1,16 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { after, type NextRequest } from "next/server";
 import { z } from "zod";
 import { listMemories, requireOnboardedProfile, type MessageRow } from "@/lib/db";
 import { AppError, ERRORS, errorResponse, handleRouteError } from "@/lib/errors";
-import { CHAT_MODEL, fallbackParams, getAnthropic, toAppError } from "@/lib/lyra/anthropic";
+import { getLLM, toAppError, type ChatTurn } from "@/lib/llm";
 import { buildLyraContext } from "@/lib/lyra/context";
 import { MEMORY_EVERY_N_USER_MESSAGES, processConversationMemory } from "@/lib/lyra/memory";
 import { STREAM_ERROR_MARKER } from "@/lib/lyra/protocol";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getUser } from "@/lib/supabase/server";
 
-export const maxDuration = 120;
+// Vercel Hobby (ücretsiz) planı sınırı içinde
+export const maxDuration = 60;
 
 const bodySchema = z.object({
   conversationId: z.uuid().nullish(),
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     const profile = await requireOnboardedProfile(supabase, user.id);
     await enforceRateLimit(supabase, "chat");
-    const anthropic = getAnthropic(); // anahtar yoksa erken ve nazikçe hata ver
+    const llm = getLLM(); // anahtar yoksa erken ve nazikçe hata ver
 
     // Sohbeti bul ya da oluştur (RLS sahipliği garanti eder)
     let conversationId = parsed.data.conversationId ?? null;
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const memories = await listMemories(supabase);
     const { system } = buildLyraContext(profile, memories);
 
-    const messages: Anthropic.Beta.BetaMessageParam[] = [
+    const messages: ChatTurn[] = [
       ...history.map((m) => ({ role: m.role, content: m.content })),
       { role: "user", content: message },
     ];
@@ -81,25 +81,13 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         let full = "";
         try {
-          const llm = anthropic.beta.messages.stream({
-            model: CHAT_MODEL,
-            max_tokens: 16000,
-            ...fallbackParams(CHAT_MODEL),
-            output_config: { effort: "medium" },
-            // Sistem promptu gün içinde sabit kalır → önbelleğe alınır
-            system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-            messages,
-          });
-
-          for await (const event of llm) {
-            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-              full += event.delta.text;
-              controller.enqueue(encoder.encode(event.delta.text));
-            }
+          for await (const text of llm.streamChat({ system, messages })) {
+            full += text;
+            controller.enqueue(encoder.encode(text));
           }
 
-          const final = await llm.finalMessage();
-          if (final.stop_reason === "refusal" && !full) {
+          // Model içerik politikası nedeniyle hiçbir şey üretmediyse nazik bir cevap ver
+          if (!full.trim()) {
             full = "Bu konuda sana yardımcı olamayacağım, ama başka bir şey sormak istersen buradayım. 🌙";
             controller.enqueue(encoder.encode(full));
           }

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { errorResponse, handleRouteError } from "@/lib/errors";
-import { toAppError } from "@/lib/lyra/anthropic";
+import { toAppError } from "@/lib/llm";
 import { processConversationMemory } from "@/lib/lyra/memory";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getUser } from "@/lib/supabase/server";

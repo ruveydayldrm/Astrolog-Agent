@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatAspect, todayIn, type Aspect } from "../astro";
 import { listMemories, type OnboardedProfile } from "../db";
 import { enforceRateLimit } from "../rate-limit";
-import { fallbackParams, getAnthropic, UTILITY_MODEL } from "./anthropic";
+import { getLLM } from "../llm";
 import { buildLyraContext } from "./context";
 
 export interface DailyTransit {
@@ -54,28 +54,17 @@ export async function getOrCreateDailyNote(supabase: SupabaseClient, profile: On
     applying: a.applying ?? false,
   }));
 
-  const response = await getAnthropic().beta.messages.create({
-    model: UTILITY_MODEL,
-    max_tokens: 4000,
-    ...fallbackParams(UTILITY_MODEL),
-    output_config: { effort: "low" },
+  const text = await getLLM().complete({
+    role: "utility",
     system,
-    messages: [
-      {
-        role: "user",
-        content:
-          "Ana panelimde görünecek bugünkü kısa günlük notunu yaz. En öne çıkan bir ya da iki transite odaklan, " +
-          "haritamdaki karşılığını ve günüme nasıl yansıyabileceğini anlat. En fazla 3 cümle, başlık ve liste kullanma, " +
-          "tek paragraf. Doğrudan nota başla.",
-      },
-    ],
+    maxTokens: 1024,
+    prompt:
+      "Ana panelimde görünecek bugünkü kısa günlük notunu yaz. En öne çıkan bir ya da iki transite odaklan, " +
+      "haritamdaki karşılığını ve günüme nasıl yansıyabileceğini anlat. En fazla 3 cümle, başlık ve liste kullanma, " +
+      "tek paragraf. Doğrudan nota başla.",
   });
 
-  const note =
-    response.content
-      .flatMap((b) => (b.type === "text" ? [b.text] : []))
-      .join("")
-      .trim() || "Bugün gökyüzü sessiz; kendine biraz alan açmak için güzel bir gün olabilir. 🌙";
+  const note = text || "Bugün gökyüzü sessiz; kendine biraz alan açmak için güzel bir gün olabilir. 🌙";
 
   // Aynı anda iki istek gelirse ilk yazılan kazanır
   await supabase

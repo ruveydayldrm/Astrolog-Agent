@@ -1,6 +1,6 @@
 import { requireOnboardedProfile } from "@/lib/db";
 import { errorResponse, handleRouteError } from "@/lib/errors";
-import { toAppError } from "@/lib/lyra/anthropic";
+import { toAppError } from "@/lib/llm";
 import { getOrCreateDailyNote } from "@/lib/lyra/daily";
 import { getUser } from "@/lib/supabase/server";
 

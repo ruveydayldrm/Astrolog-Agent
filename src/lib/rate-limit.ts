@@ -2,11 +2,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "./errors";
 
-/** Kova tanımları: [limit, pencere (sn)]. Bir isteğin tüm kovaları geçmesi gerekir. */
+/**
+ * Kova tanımları: [limit, pencere (sn)]. Bir isteğin tüm kovaları geçmesi gerekir.
+ * Gemini ücretsiz katmanının günlük kotası proje geneli paylaşıldığı için kullanıcı başı limitler mütevazı.
+ */
 export const LIMITS = {
   chat: [
-    ["chat:hour", 30, 3600],
-    ["chat:day", 150, 86400],
+    ["chat:hour", 20, 3600],
+    ["chat:day", 60, 86400],
   ],
   memory: [["memory:hour", 20, 3600]],
   daily: [["daily:day", 5, 86400]],

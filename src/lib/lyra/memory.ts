@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { listMemories, type MemoryRow, type MessageRow } from "../db";
-import { fallbackParams, getAnthropic, UTILITY_MODEL } from "./anthropic";
+import { getLLM } from "../llm";
 
 /** Bu kadar yeni kullanıcı mesajı birikince hafıza sohbet sırasında da güncellenir. */
 export const MEMORY_EVERY_N_USER_MESSAGES = 10;
@@ -63,24 +63,23 @@ function transcript(messages: Pick<MessageRow, "role" | "content">[]) {
 
 /** Ayrı bir LLM çağrısıyla mevcut hafıza + yeni konuşmadan güncel hafızayı üretir. */
 export async function extractMemory(existing: MemoryRow[], messages: Pick<MessageRow, "role" | "content">[]) {
-  const anthropic = getAnthropic();
-  const response = await anthropic.beta.messages.create({
-    model: UTILITY_MODEL,
-    max_tokens: 8000,
-    ...fallbackParams(UTILITY_MODEL),
-    output_config: { effort: "low", format: { type: "json_schema", schema: JSON_SCHEMA } },
+  const text = await getLLM().complete({
+    role: "utility",
     system: EXTRACTION_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `<mevcut_hafiza>\n${existingAsJson(existing)}\n</mevcut_hafiza>\n\n<yeni_konusma>\n${transcript(messages)}\n</yeni_konusma>\n\nGüncel hafızanın tamamını JSON olarak döndür.`,
-      },
-    ],
+    jsonSchema: JSON_SCHEMA as unknown as Record<string, unknown>,
+    maxTokens: 4096,
+    prompt: `<mevcut_hafiza>\n${existingAsJson(existing)}\n</mevcut_hafiza>\n\n<yeni_konusma>\n${transcript(messages)}\n</yeni_konusma>\n\nGüncel hafızanın tamamını JSON olarak döndür.`,
   });
+  if (!text) return null;
 
-  if (response.stop_reason === "refusal") return null;
-  const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  const parsed = memorySchema.safeParse(JSON.parse(text));
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    console.error("[lyra] hafıza çıktısı JSON değil");
+    return null;
+  }
+  const parsed = memorySchema.safeParse(json);
   if (!parsed.success) {
     console.error("[lyra] hafıza çıktısı şemaya uymadı:", parsed.error.message);
     return null;
