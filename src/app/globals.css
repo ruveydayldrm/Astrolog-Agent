@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/* ---------- Tasarım token'ları: gece gökyüzü ---------- */
+@theme {
+  --color-night-950: #07071a;
+  --color-night-900: #0b0b1f;
+  --color-night-800: #12112e;
+  --color-night-700: #1a1440;
+  --color-night-600: #2a2160;
+  --color-gold-300: #ecd68f;
+  --color-gold-400: #e0c262;
+  --color-gold-500: #d4af37;
+  --color-gold-600: #b08f25;
+  --color-lilac-200: #e4dcff;
+  --color-lilac-300: #c9bbff;
+  --color-lilac-400: #a994f5;
+  --color-silver-100: #eef0f6;
+  --color-silver-300: #c3c7d6;
+  --color-silver-500: #8e93a8;
+  --color-rose-400: #f08ca8;
+
+  --font-serif: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+
+  --shadow-glow: 0 0 40px -8px rgb(212 175 55 / 0.35);
+  --shadow-soft: 0 20px 50px -20px rgb(0 0 0 / 0.6);
+
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-float: float 7s ease-in-out infinite;
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: radial-gradient(ellipse at top, var(--color-night-700) 0%, var(--color-night-900) 55%, var(--color-night-950) 100%) fixed;
+  color: var(--color-silver-100);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgb(212 175 55 / 0.35);
+  color: white;
+}
+
+/* ---------- Bileşen katmanı ---------- */
+@layer components {
+  /* Cam kart: bulanık arka plan + ince altın kenarlık */
+  .glass {
+    background: linear-gradient(145deg, rgb(26 20 64 / 0.55), rgb(11 11 31 / 0.45));
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgb(212 175 55 / 0.22);
+    box-shadow: var(--shadow-soft), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  }
+
+  .gold-text {
+    background: linear-gradient(100deg, var(--color-gold-300), var(--color-gold-500) 45%, var(--color-gold-300));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .shimmer-text {
+    background: linear-gradient(90deg, var(--color-silver-500) 0%, var(--color-gold-300) 50%, var(--color-silver-500) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: var(--animate-shimmer);
+  }
+
+  .divider-gold {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgb(212 175 55 / 0.5), transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
